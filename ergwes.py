@@ -2,8 +2,9 @@ import pandas as pd
 import sqlite3
 import socket
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import accuracy_score, classification_report
-from sklearn.preprocessing import LabelEncoder
+from sklearn.cluster import AgglomerativeClustering, DBSCAN
+from sklearn.metrics import accuracy_score, classification_report, completeness_score, homogeneity_score
+from sklearn.preprocessing import LabelEncoder, StandardScaler
 from sklearn.model_selection import train_test_split
 import os
 
@@ -46,34 +47,38 @@ y = data['Attack Type']
 categorical_columns = ['HTTP Method', 'URL', 'User-Agent']
 X_encoded = pd.get_dummies(X, columns=categorical_columns, drop_first=True)
 
+# Масштабирование данных для кластеризации
+scaler = StandardScaler()
+X_scaled = scaler.fit_transform(X_encoded)
+
 # Кодирование целевых меток
 label_encoder = LabelEncoder()
 y_encoded = label_encoder.fit_transform(y)
 
-# Разделение данных на обучающую и тестовую выборки
-X_train, X_test, y_train, y_test = train_test_split(X_encoded, y_encoded, test_size=0.3, random_state=42)
+# Иерархическая кластеризация
+hierarchical = AgglomerativeClustering(n_clusters=len(set(y_encoded)), linkage='ward')
+hierarchical_labels = hierarchical.fit_predict(X_scaled)
 
-# Обучение модели
-model = RandomForestClassifier(random_state=42)
-model.fit(X_train, y_train)
+# DBSCAN кластеризация
+dbscan = DBSCAN(eps=1.5, min_samples=10)
+dbscan_labels = dbscan.fit_predict(X_scaled)
 
-# Прогнозирование на обучающей выборке
-y_pred_train = model.predict(X_train)
+# Метрики для иерархической кластеризации
+completeness_hierarchical = completeness_score(y_encoded, hierarchical_labels)
+homogeneity_hierarchical = homogeneity_score(y_encoded, hierarchical_labels)
 
-# Прогнозирование на тестовой выборке
-y_pred_test = model.predict(X_test)
+# Метрики для DBSCAN
+# Удаляем шум (-1) из кластеров для метрик
+dbscan_labels_filtered = dbscan_labels[dbscan_labels != -1]
+y_encoded_filtered = y_encoded[dbscan_labels != -1]
+completeness_dbscan = completeness_score(y_encoded_filtered, dbscan_labels_filtered)
+homogeneity_dbscan = homogeneity_score(y_encoded_filtered, dbscan_labels_filtered)
 
-# Вычисление точности на обучающей выборке
-accuracy_train = accuracy_score(y_train, y_pred_train) * 100  # Умножение на 100 для получения процентов
-classification_rep_train = classification_report(y_train, y_pred_train, target_names=label_encoder.classes_)
+# Вывод результатов кластеризации
+print("Иерархическая кластеризация:")
+print(f"Полнота: {completeness_hierarchical:.2f}")
+print(f"Однородность: {homogeneity_hierarchical:.2f}")
 
-# Вычисление точности на тестовой выборке
-accuracy_test = accuracy_score(y_test, y_pred_test) * 100  # Умножение на 100 для получения процентов
-classification_rep_test = classification_report(y_test, y_pred_test, target_names=label_encoder.classes_)
-
-# Вывод результатов
-print(f"Точность модели на обучающей выборке: {accuracy_train:.2f}%")
-print("Отчет о классификации на обучающей выборке:\n", classification_rep_train)
-
-print(f"Точность модели на тестовой выборке: {accuracy_test:.2f}%")
-print("Отчет о классификации на тестовой выборке:\n", classification_rep_test)
+print("\nDBSCAN кластеризация:")
+print(f"Полнота: {completeness_dbscan:.2f}")
+print(f"Однородность: {homogeneity_dbscan:.2f}")
